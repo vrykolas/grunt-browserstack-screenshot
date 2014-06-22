@@ -48,7 +48,6 @@ var fs = require('fs');
 
       BrowserStackTunnel.start(function(error) {
         if (error) throw error;
-
         resolve();
       });
     });
@@ -63,54 +62,15 @@ var fs = require('fs');
     });
   }
 
-  function takeScreenshots(options) {
+  function connectBrowser(browser) {
     return new Promise(function(resolve, reject) {
-      async.eachLimit(options.urls, maxConnections, function(item, callback) {
-
-      }, function(error) {
-        if error throw error;
-        resolve();
-      })
-    });
-  }
-
-
-// Input capabilities
-var capabilities = {
-  'browserName' : 'firefox',
-  'browserstack.user' : 'USERNAME',
-  'browserstack.key' : 'ACCESS_KEY'
-}
-
-var driver = new webdriver.Builder().
-  usingServer('http://hub.browserstack.com/wd/hub').
-  withCapabilities(capabilities).
-  build();
-
-driver.get('http://www.google.com/ncr');
-webdriver.WebDriver.prototype.saveScreenshot = function(filename) {
-  return driver.takeScreenshot().then(function(data) {
-    fs.writeFile(filename, data.replace(/^data:image\/png;base64,/,''), 'base64', function(err) {
-      if(err) throw err;
-    });
-  })
-};
-
-driver.quit();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      // Input capabilities
+      var driver = new webdriver.Builder().
+        usingServer('http://hub.browserstack.com/wd/hub').
+        withCapabilities(browser).
+        build();
+      
+      resolve(driver);
     });
   }
 
@@ -122,22 +82,28 @@ driver.quit();
     })
   }
 
-  function takeScreenshot(browser, url, filename) {
-    return new Promise(function(resolve, reject) {
-      // Input capabilities
-      var driver = new webdriver.Builder().
-        usingServer('http://hub.browserstack.com/wd/hub').
-        withCapabilities(browser).
-        build();
+  function takeScreenshots(options) {
+    var maxConnections = 1;
 
-      driver.get(url);
-      saveScreenshot(driver, filename).then(resolve, reject).finally(function() {
-        driver.quit();
+    return new Promise(function(resolve, reject) {
+      async.eachLimit(options.browsers, maxConnections, function(browser, callback) {
+        connectBrowser(browser).then(function(driver) {
+          async.eachSeries(options.urls, function(url, callback) {
+            driver.get(url);
+            saveScreenshot(driver, filename).then(function() {
+              callback();
+            });
+          }, function() {
+            driver.quit();
+            callback();
+          });
+      }).finally(function() {
+        resolve();
       });
     });
   }
 
-  function (error, options, callback) {
+  function screenshot(error, options, callback) {
     if(options.useTunnel) {
       return openTunnel(options).then(function() {
         return takeScreenshots(options);
@@ -148,23 +114,3 @@ driver.quit();
       return takeScreenshots(options);
     }
   }
-
-
-
-
-//BrowserStackTunnel-wrapper
-
-});
-
-
-
-
-
-
-
-
-client.getBrowsers(function( error, browsers ) {
-    console.log( 'The following browsers are available for testing' );
-    console.log( browsers );
-});
-
