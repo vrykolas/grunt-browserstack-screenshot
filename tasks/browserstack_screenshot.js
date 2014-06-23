@@ -196,7 +196,7 @@ module.exports = function(grunt) {
         port: 80,
         sslFlag: 0
       }],
-      filenamePattern: 'screenshots/{os}-{os_version}-{browser}-{browser_version}-{device}-{url}'
+      filenamePattern: 'screenshots/{browser}-{browser_version}-{browserName}-{os}-{os_version}-{platform}-{device}-{url}'
     });
 
     var done = this.async();
