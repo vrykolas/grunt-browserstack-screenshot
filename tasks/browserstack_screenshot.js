@@ -90,23 +90,45 @@ module.exports = function(grunt) {
   function generateFilename(pattern, browser, url) {
     var filename = pattern;
 
-    if(browser.os) {
-      filename = filename.replace(/\{os\}/, slug(browser.os));
-    }
-    if(browser.os_version) {
-      filename = filename.replace(/\{os_version\}/, slug(browser.os_version));
-    }
     if(browser.browser) {
       filename = filename.replace(/\{browser\}/, slug(browser.browser));
+    } else {
+      filename = filename.replace(/\{browser\}-/, '');
+    }
+    if(browser.browserName) {
+      filename = filename.replace(/\{browserName\}/, slug(browser.browserName));
+    } else {
+      filename = filename.replace(/\{browserName\}-/, '');
     }
     if(browser.browser_version) {
       filename = filename.replace(/\{browser_version\}/, slug(browser.browser_version));
+    } else {
+      filename = filename.replace(/\{browser_version\}-/, '');
     }
     if(browser.device) {
       filename = filename.replace(/\{device\}/, slug(browser.device));
+    } else {
+      filename = filename.replace(/\{device\}-/, '');
+    }
+    if(browser.platform) {
+      filename = filename.replace(/\{platform\}/, slug(browser.platform));
+    } else {
+      filename = filename.replace(/\{platform\}-/, '');
+    }
+    if(browser.os) {
+      filename = filename.replace(/\{os\}/, slug(browser.os));
+    } else {
+      filename = filename.replace(/\{os\}-/, '');
+    }
+    if(browser.os_version) {
+      filename = filename.replace(/\{os_version\}/, slug(browser.os_version));
+    } else {
+      filename = filename.replace(/\{os_version\}-/, '');
     }
     if(url) {
       filename = filename.replace(/\{url\}/, slug(url));
+    } else {
+      filename = filename.replace(/\{url\}-/, '');
     }
     filename += '.png';
     filename = filename.replace(/--/, '-');
