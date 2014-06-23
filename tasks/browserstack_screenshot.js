@@ -17,6 +17,7 @@ var slug = require('slug');
 
 
 module.exports = function(grunt) {
+  var browserStackTunnel  = null;
 
   function openTunnel(options) {
     return new Promise(function(resolve, reject) {
@@ -43,9 +44,9 @@ module.exports = function(grunt) {
         }
       }
 
-      var BrowserStackTunnel = new BrowserStackTunnel(tunnelOptions);
+      browserStackTunnel = new BrowserStackTunnel(tunnelOptions);
 
-      BrowserStackTunnel.start(function(error) {
+      browserStackTunnel.start(function(error) {
         if (error) {
           return reject(error);
         }
@@ -57,7 +58,7 @@ module.exports = function(grunt) {
 
   function closeTunnel() {
     return new Promise(function(resolve, reject) {
-      BrowserStackTunnel.stop(function(error) {
+      browserStackTunnel.stop(function(error) {
         if (error) {
           return reject(error);
         }
@@ -79,45 +80,35 @@ module.exports = function(grunt) {
     });
   }
 
-  function saveScreenshot(driver, filename) {
+  function saveScreenshot(driver, filepath) {
     return driver.takeScreenshot().then(function(data) {
-      fs.writeFile(filename, data.replace(/^data:image\/png;base64,/,''), 'base64', function(error) {
-        if(error) {
-          throw error;
-        }
-      });
+      var pngBuf = new Buffer(data.replace(/^data:image\/png;base64,/,''), 'base64');
+      grunt.file.write(filepath, pngBuf);
     });
   }
 
   function generateFilename(pattern, browser, url) {
     var filename = pattern;
 
-    if(!browser.os) {
-      browser.os = '';
+    if(browser.os) {
+      filename = filename.replace(/\{os\}/, slug(browser.os));
     }
-    if(!browser.os_version) {
-      browser.os_version = '';
+    if(browser.os_version) {
+      filename = filename.replace(/\{os_version\}/, slug(browser.os_version));
     }
-    if(!browser.browser) {
-      browser.browser = '';
+    if(browser.browser) {
+      filename = filename.replace(/\{browser\}/, slug(browser.browser));
     }
-    if(!browser.browser_version) {
-      browser.browser_version = '';
+    if(browser.browser_version) {
+      filename = filename.replace(/\{browser_version\}/, slug(browser.browser_version));
     }
-    if(!browser.device) {
-      browser.device = '';
+    if(browser.device) {
+      filename = filename.replace(/\{device\}/, slug(browser.device));
     }
-    if(!url) {
-      url = '';
+    if(url) {
+      filename = filename.replace(/\{url\}/, slug(url));
     }
-
-    filename = filename.replace(/\{os\}/, slug(browser.os));
-    filename = filename.replace(/\{os_version\}/, slug(browser.os_version));
-    filename = filename.replace(/\{browser\}/, slug(browser.browser));
-    filename = filename.replace(/\{browser_version\}/, slug(browser.browser_version));
-    filename = filename.replace(/\{device\}/, slug(browser.device));
-    filename = filename.replace(/\{url\}/, slug(url));
-    filename = filename.replace(/\{ext\}/, '.png');
+    filename += '.png';
     filename = filename.replace(/--/, '-');
 
     return filename;
@@ -133,8 +124,8 @@ module.exports = function(grunt) {
         }
 
         connectBrowser(browser).then(function(driver) {
-          async.eachSeries(options.urls, function(url, callback) {
-            var logText = 'Creating screenshot for ' + url;
+          async.eachSeries(options.pages, function(url, callback) {
+            var logText = 'Creating screenshot for ' + url.url;
             logText += ' with ' + browser.browser + ' ' + browser.browser_version;
             logText += ' on ' + browser.os + ' ' + browser.os_version;
             if(browser.device) {
@@ -177,14 +168,15 @@ module.exports = function(grunt) {
       key: '',
       useTunnel: false,
       browsers: [],
-      urls: {},
+      pages: {},
       proxy: {},
       tunnelId: '',
       hosts: [{
         name: 'localhost',
         port: 80,
         sslFlag: 0
-      }]
+      }],
+      filenamePattern: 'screenshots/{os}-{os_version}-{browser}-{browser_version}-{device}-{url}'
     });
 
     var done = this.async();
