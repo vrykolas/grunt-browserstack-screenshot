@@ -126,8 +126,6 @@ module.exports = function(grunt) {
         connectBrowser(browser).then(function(driver) {
           async.eachSeries(options.pages, function(url, callback) {
             var logText = 'Creating screenshot for ' + url.url;
-            logText += ' with ' + browser.browser + ' ' + browser.browser_version;
-            logText += ' on ' + browser.os + ' ' + browser.os_version;
             if(browser.device) {
               logText += ' using a ' + browser.device;
             }
