@@ -70,11 +70,10 @@ module.exports = function(grunt) {
   function connectBrowser(browser) {
     return new Promise(function(resolve, reject) {
       // Input capabilities
-      var driver = new webdriver.Builder();
-
-      driver.usingServer('http://hub.browserstack.com/wd/hub');
-      driver.withCapabilities(browser);
-      driver.build();
+      var driver = new webdriver.Builder().
+        usingServer('http://hub.browserstack.com/wd/hub').
+        withCapabilities(browser).
+        build();
 
       resolve(driver);
     });
@@ -93,14 +92,33 @@ module.exports = function(grunt) {
   function generateFilename(pattern, browser, url) {
     var filename = pattern;
 
-    filename.replace(/\{os\}/, slug(browser.os));
-    filename.replace(/\{os_version\}/, slug(browser.os_version));
-    filename.replace(/\{browser\}/, slug(browser.browser));
-    filename.replace(/\{browser_version\}/, slug(browser.browser_version));
-    filename.replace(/\{device\}/, slug(browser.device));
-    filename.replace(/\{url\}/, slug(url));
-    filename.replace(/\{ext\}/, '.png');
-    filename.replace(/--/, '');
+    if(!browser.os) {
+      browser.os = '';
+    }
+    if(!browser.os_version) {
+      browser.os_version = '';
+    }
+    if(!browser.browser) {
+      browser.browser = '';
+    }
+    if(!browser.browser_version) {
+      browser.browser_version = '';
+    }
+    if(!browser.device) {
+      browser.device = '';
+    }
+    if(!url) {
+      url = '';
+    }
+
+    filename = filename.replace(/\{os\}/, slug(browser.os));
+    filename = filename.replace(/\{os_version\}/, slug(browser.os_version));
+    filename = filename.replace(/\{browser\}/, slug(browser.browser));
+    filename = filename.replace(/\{browser_version\}/, slug(browser.browser_version));
+    filename = filename.replace(/\{device\}/, slug(browser.device));
+    filename = filename.replace(/\{url\}/, slug(url));
+    filename = filename.replace(/\{ext\}/, '.png');
+    filename = filename.replace(/--/, '-');
 
     return filename;
   }
@@ -108,9 +126,11 @@ module.exports = function(grunt) {
   function takeScreenshots(options) {
     return new Promise(function(resolve, reject) {
       async.eachSeries(options.browsers, function(browser, callback) {
+        browser["browserstack.user"] = options.username;
+        browser["browserstack.key"] = options.key;
+
         connectBrowser(browser).then(function(driver) {
           async.eachSeries(options.urls, function(url, callback) {
-
             var logText = 'Creating screenshot for ' + url;
             logText += ' with ' + browser.browser + ' ' + browser.browser_version;
             logText += ' on ' + browser.os + ' ' + browser.os_version;
@@ -120,6 +140,7 @@ module.exports = function(grunt) {
             grunt.log.writeln(logText);
 
             var filename = generateFilename(options.filenamePattern, browser, url);
+
             driver.get(url);
             saveScreenshot(driver, filename).then(function() {
               callback();
@@ -148,6 +169,7 @@ module.exports = function(grunt) {
       username: '',
       key: '',
       useTunnel: false,
+      browsers: [],
       urls: [],
       proxy: {},
       tunnelId: '',
