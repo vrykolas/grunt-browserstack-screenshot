@@ -126,8 +126,11 @@ module.exports = function(grunt) {
   function takeScreenshots(options) {
     return new Promise(function(resolve, reject) {
       async.eachSeries(options.browsers, function(browser, callback) {
-        browser["browserstack.user"] = options.username;
-        browser["browserstack.key"] = options.key;
+        browser['browserstack.user'] = options.username;
+        browser['browserstack.key'] = options.key;
+        if(options.useTunnel) {
+          browser['browserstack.local'] = true;
+        }
 
         connectBrowser(browser).then(function(driver) {
           async.eachSeries(options.urls, function(url, callback) {
@@ -139,9 +142,13 @@ module.exports = function(grunt) {
             }
             grunt.log.writeln(logText);
 
-            var filename = generateFilename(options.filenamePattern, browser, url);
+            if(url.dirname.substr(-1) !== '/' ) {
+              url.dirname += '/';
+            }
 
-            driver.get(url);
+            var filename = url.dirname + generateFilename(options.filenamePattern, browser, url);
+
+            driver.get(url.url);
             saveScreenshot(driver, filename).then(function() {
               callback();
             }, function(error) {
@@ -170,15 +177,14 @@ module.exports = function(grunt) {
       key: '',
       useTunnel: false,
       browsers: [],
-      urls: [],
+      urls: {},
       proxy: {},
       tunnelId: '',
       hosts: [{
         name: 'localhost',
         port: 80,
         sslFlag: 0
-      }],
-      filenamePattern: '{os}-{os_version}-{browser}-{browser_version}-{device}-{url}{ext}'
+      }]
     });
 
     var done = this.async();
