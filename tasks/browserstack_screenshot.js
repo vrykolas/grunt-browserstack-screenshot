@@ -8,19 +8,187 @@
 
 'use strict';
 
-module.exports = function(grunt) {
+var Promise = require('bluebird');
+var BrowserStackTunnel = require('browserstacktunnel-wrapper');
+var async = require('async');
+var webdriver = require('browserstack-webdriver');
+var fs = require('fs');
+var slug = require('slug');
 
-  // Please see the Grunt documentation for more information regarding task
-  // creation: http://gruntjs.com/creating-tasks
+
+module.exports = function(grunt) {
+  var browserStackTunnel  = null;
+
+  function openTunnel(options) {
+    return new Promise(function(resolve, reject) {
+      var tunnelOptions = {};
+
+      tunnelOptions.key = options.key;
+      tunnelOptions.hosts = options.hosts;
+
+      if(options.tunnelId) {
+        tunnelOptions.tunnelIdentifier =  options.tunnelId;
+      }
+      if(options.proxy) {
+        if(options.proxy.username) {
+          tunnelOptions.proxyUser = options.proxy.username;
+        }
+        if(options.proxy.password) {
+          tunnelOptions.proxyPass = options.proxy.password;
+        }
+        if(options.proxy.port) {
+          tunnelOptions.proxyPort = options.proxy.port;
+        }
+        if(options.proxy.host) {
+          tunnelOptions.proxyHost = options.proxy.host;
+        }
+      }
+
+      browserStackTunnel = new BrowserStackTunnel(tunnelOptions);
+
+      browserStackTunnel.start(function(error) {
+        if (error) {
+          return reject(error);
+        }
+
+        return resolve();
+      });
+    });
+  }
+
+  function closeTunnel() {
+    return new Promise(function(resolve, reject) {
+      browserStackTunnel.stop(function(error) {
+        if (error) {
+          return reject(error);
+        }
+
+        return resolve();
+      });
+    });
+  }
+
+  function connectBrowser(browser) {
+    return new Promise(function(resolve, reject) {
+      // Input capabilities
+      var driver = new webdriver.Builder().
+        usingServer('http://hub.browserstack.com/wd/hub').
+        withCapabilities(browser).
+        build();
+
+      resolve(driver);
+    });
+  }
+
+  function saveScreenshot(driver, filepath) {
+    return driver.takeScreenshot().then(function(data) {
+      var pngBuf = new Buffer(data.replace(/^data:image\/png;base64,/,''), 'base64');
+      grunt.file.write(filepath, pngBuf);
+    });
+  }
+
+  function generateFilename(pattern, browser, url) {
+    var filename = pattern;
+
+    if(browser.browser) {
+      filename = filename.replace(/\{browser\}/, slug(browser.browser));
+    } else {
+      filename = filename.replace(/\{browser\}-/, '');
+    }
+    if(browser.browserName) {
+      filename = filename.replace(/\{browserName\}/, slug(browser.browserName));
+    } else {
+      filename = filename.replace(/\{browserName\}-/, '');
+    }
+    if(browser.browser_version) {
+      filename = filename.replace(/\{browser_version\}/, slug(browser.browser_version));
+    } else {
+      filename = filename.replace(/\{browser_version\}-/, '');
+    }
+    if(browser.device) {
+      filename = filename.replace(/\{device\}/, slug(browser.device));
+    } else {
+      filename = filename.replace(/\{device\}-/, '');
+    }
+    if(browser.platform) {
+      filename = filename.replace(/\{platform\}/, slug(browser.platform));
+    } else {
+      filename = filename.replace(/\{platform\}-/, '');
+    }
+    if(browser.os) {
+      filename = filename.replace(/\{os\}/, slug(browser.os));
+    } else {
+      filename = filename.replace(/\{os\}-/, '');
+    }
+    if(browser.os_version) {
+      filename = filename.replace(/\{os_version\}/, slug(browser.os_version));
+    } else {
+      filename = filename.replace(/\{os_version\}-/, '');
+    }
+    if(url) {
+      filename = filename.replace(/\{url\}/, slug(url));
+    } else {
+      filename = filename.replace(/\{url\}-/, '');
+    }
+    filename += '.png';
+    filename = filename.replace(/--/, '-');
+
+    return filename;
+  }
+
+  function takeScreenshots(options) {
+    return new Promise(function(resolve, reject) {
+      async.eachSeries(options.browsers, function(browser, callback) {
+        browser['browserstack.user'] = options.username;
+        browser['browserstack.key'] = options.key;
+        if(options.useTunnel) {
+          browser['browserstack.local'] = true;
+        }
+
+        connectBrowser(browser).then(function(driver) {
+          async.eachSeries(options.pages, function(url, callback) {
+            var logText = 'Creating screenshot for ' + url.url;
+            if(browser.device) {
+              logText += ' using a ' + browser.device;
+            }
+            grunt.log.writeln(logText);
+
+            if(url.dirname.substr(-1) !== '/' ) {
+              url.dirname += '/';
+            }
+
+            var filename = url.dirname + generateFilename(options.filenamePattern, browser, url);
+
+            driver.get(url.url);
+            saveScreenshot(driver, filename).then(function() {
+              callback();
+            }, function(error) {
+              callback(error);
+            });
+          }, function(error) {
+            driver.quit();
+            callback(error);
+          });
+        });
+      }, function(error) {
+        if (error) {
+          return reject(error);
+        }
+
+        return resolve();
+      });
+    });
+  }
 
   grunt.registerMultiTask('browserstack_screenshot', 'Take cross-browser screenshots with Browserstack', function() {
     // Merge task-specific and/or target-specific options with these defaults.
+    var screenshots;
     var options = this.options({
       username: '',
-      password: '',
-      useTunnel: false,
-      urls: [],
       key: '',
+      useTunnel: false,
+      browsers: [],
+      pages: {},
       proxy: {},
       tunnelId: '',
       hosts: [{
@@ -28,159 +196,22 @@ module.exports = function(grunt) {
         port: 80,
         sslFlag: 0
       }],
+      filenamePattern: 'screenshots/{browser}-{browser_version}-{browserName}-{os}-{os_version}-{platform}-{device}-{url}'
     });
 
+    var done = this.async();
 
-
-//node-browserstack
-var BrowserStack = require( 'browserstack' );
-var client = BrowserStack.createClient({
-    username: 'foo',
-    password: 'p455w0rd!!1'
-});
-
-client.getBrowsers(function( error, browsers ) {
-    console.log( 'The following browsers are available for testing' );
-    console.log( browsers );
-});
-
-client.createWorker( settings, function( error, worker ) {
-});
-
-client.takeScreenshot( id, function( error, data ) {
-});
-
-client.terminateWorker( id, function( error, data ) {
-});
-
-
-
-
-BrowserStack.createClient( settings )
-
-Creates a new client instance.
-
-    settings: A hash of settings that apply to all requests for the new client.
-        username: The username for the BrowserStack account.
-        password: The password for the BrowserStack account.
-        version (optional; default: 3): Which version of the BrowserStack API to use.
-        server (optional; default: { host: 'api.browserstack.com', port: 80 }): An object containing host and port to connect to a different BrowserStack API compatible service.
-
-
-client.getBrowsers( callback )
-
-Gets the list of available browsers.
-
-    callback (function( error, browsers )): A callback to invoke when the API call is complete.
-        browsers: An array of browser objects.
-
-
-client.createWorker( settings, callback )
-
-Creates a worker.
-
-    settings: A hash of settings for the worker (an extended browser object).
-        os: See browser object for details.
-        os_version: See browser object for details.
-        browser: See browser object for details.
-        browser_version: See browser object for details.
-        device: See browser object for details.
-        url (optional): Which URL to navigate to upon creation.
-        timeout (optional): Maximum life of the worker (in seconds). Use 0 for 'forever' (BrowserStack will kill the worker after 1,800 seconds).
-    callback (function( error, worker )): A callback to invoke when the API call is complete.
-        worker A worker object.
-
-worker objects
-
-Worker objects are extended browser objects which contain the following additional properties:
-
-    id: The worker id.
-    status: A string representing the current status of the worker.
-        Possible statuses: 'running', 'queue'.
-
-
-client.takeScreenshot( id, callback )
-
-Take a screenshot at current state of worker.
-
-    callback (function( error, data )): A callback to invoke when the API call is complete.
-        data: An object with a url property having the public url for the screenshot.
-
-
-client.terminateWorker( id, callback )
-
-Terminates an active worker.
-
-    id: The id of the worker to terminate.
-    callback (function( error, data )): A callback to invoke when the API call is complete.
-        data: An object with a time property indicating how long the worker was alive.
-
-
-
-//browserstacktunnel-wrapper
-var BrowserStackTunnel = require('browserstacktunnel-wrapper');
-
-var browserStackTunnel = new BrowserStackTunnel({
-  key: YOUR_KEY,
-  hosts: [{
-    name: 'localhost',
-    port: 8080,
-    sslFlag: 0
-  }],
-  tunnelIdentifier: 'my_tunnel', // optionally set the -tunnelIdentifier option
-  skipCheck: true, // optionally set the -skipCheck option
-  v: true, // optionally set the -v (verbose) option
-  proxyUser: PROXY_USER, // optionally set the -proxyUser option
-  proxyPass: PROXY_PASS, // optionally set the -proxyPass option
-  proxyPort: PROXY_PORT, // optionally set the -proxyPort option
-  proxyHost: PROXY_HOST // optionally set the -proxyHost option
-});
-
-browserStackTunnel.start(function(error) {
-  if (error) {
-    console.log(error);
-  } else {
-    // tunnel has started
-
-    browserStackTunnel.stop(function(error) {
-      if (error) {
-        console.log(error);
-      } else {
-        // tunnel has stopped
-      }
-    });
-  }
-});
-
-
-
-
-
-
-    // Iterate over all specified file groups.
-    this.files.forEach(function(f) {
-      // Concat specified files.
-      var src = f.src.filter(function(filepath) {
-        // Warn on and remove invalid source files (if nonull was set).
-        if (!grunt.file.exists(filepath)) {
-          grunt.log.warn('Source file '' + filepath + '' not found.');
-          return false;
-        } else {
-          return true;
-        }
-      }).map(function(filepath) {
-        // Read file source.
-        return grunt.file.read(filepath);
-      }).join(grunt.util.normalizelf(options.separator));
-
-      // Handle options.
-      src += options.punctuation;
-
-      // Write the destination file.
-      grunt.file.write(f.dest, src);
-
-      // Print a success message.
-      grunt.log.writeln('File '' + f.dest + '' created.');
+    if(options.useTunnel) {
+      screenshots = openTunnel(options).then(function() {
+        return takeScreenshots(options);
+      }).finally(function() {
+        return closeTunnel();
+      });
+    } else {
+      screenshots = takeScreenshots(options);
+    }
+    screenshots.finally(function() {
+      done();
     });
   });
 
